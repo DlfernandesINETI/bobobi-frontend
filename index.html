@@ -235,6 +235,21 @@
   .row { display: flex; gap: 8px; }
   .row > div { flex: 1; }
 
+  .save-btn {
+    margin-top: 4px;
+    padding: 10px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: #14121f;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .save-btn.saved {
+    background: var(--listen);
+  }
+
   .transcript-debug {
     font-size: 12px;
     color: var(--text-dim);
@@ -281,7 +296,7 @@
     <div class="config-panel">
       <div>
         <label for="webhookUrl">URL do webhook (n8n)</label>
-        <input type="text" id="webhookUrl" value="https://n8n.inetiirati.tech/webhook-test/bobobi-fala">
+        <input type="text" id="webhookUrl" value="https://n8n.inetiirati.tech/webhook/bobobi-fala">
       </div>
 
       <div>
@@ -311,6 +326,8 @@
       <div class="row">
         <div style="font-size:11px; color:var(--text-dim);">estado: <span id="stateDebug">boot</span></div>
       </div>
+
+      <button class="save-btn" id="saveConfigBtn">Salvar e fechar</button>
     </div>
   </details>
 
@@ -331,6 +348,8 @@
   const stateDebugEl = document.getElementById('stateDebug');
   const volumeMeterWrap = document.getElementById('volumeMeterWrap');
   const volumeFill = document.getElementById('volumeFill');
+  const saveConfigBtn = document.getElementById('saveConfigBtn');
+  const configDetails = document.querySelector('.config');
 
   let stream = null;
   let audioCtx = null;
@@ -366,6 +385,53 @@
   function normalize(text) {
     return (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
+
+  // =========================================================
+  // Configuração persistente (fica salva no navegador deste
+  // celular/dispositivo, entre recarregamentos da página)
+  // =========================================================
+  const CONFIG_STORAGE_KEY = 'bumblebee_config_v1';
+
+  function loadSavedConfig() {
+    try {
+      const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+      if (!raw) return;
+      const cfg = JSON.parse(raw);
+      if (cfg.webhookUrl) webhookUrlInput.value = cfg.webhookUrl;
+      if (cfg.wakeEngine) wakeEngineSelect.value = cfg.wakeEngine;
+      if (cfg.silenceMs) silenceMsInput.value = cfg.silenceMs;
+      if (cfg.volumeThreshold) volumeThresholdInput.value = cfg.volumeThreshold;
+    } catch (e) {
+      // localStorage indisponível (ex: preview dentro do Claude) - segue com os padrões do código
+    }
+  }
+
+  function saveConfig() {
+    try {
+      localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify({
+        webhookUrl: webhookUrlInput.value.trim(),
+        wakeEngine: wakeEngineSelect.value,
+        silenceMs: silenceMsInput.value,
+        volumeThreshold: volumeThresholdInput.value
+      }));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  saveConfigBtn.addEventListener('click', () => {
+    const ok = saveConfig();
+    saveConfigBtn.textContent = ok ? 'Salvo!' : 'Não foi possível salvar';
+    saveConfigBtn.classList.toggle('saved', ok);
+    setTimeout(() => {
+      saveConfigBtn.textContent = 'Salvar e fechar';
+      saveConfigBtn.classList.remove('saved');
+      configDetails.open = false;
+    }, 700);
+  });
+
+  loadSavedConfig();
 
   // =========================================================
   // WAKE WORD ENGINES — camada trocável
