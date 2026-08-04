@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Bobobi</title>
+<title>Bumblebee</title>
 <style>
   :root {
     --bg: #14121f;
@@ -250,12 +250,12 @@
 </head>
 <body data-state="boot">
 
-  <div class="brand">Bobobi</div>
+  <div class="brand">Bumblebee</div>
 
   <div class="stage">
     <div class="orb-wrap">
       <div class="ring" id="ring"></div>
-      <button class="orb" id="orbButton" aria-label="Bobobi" style="display:none;">
+      <button class="orb" id="orbButton" aria-label="Bumblebee" style="display:none;">
         <svg class="orb-icon" id="orbIcon" viewBox="0 0 24 24">
           <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
         </svg>
@@ -263,11 +263,11 @@
     </div>
 
     <div>
-      <div class="status-label" id="statusLabel">Toque para ligar o Bobobi</div>
+      <div class="status-label" id="statusLabel">Toque para ligar o Bumblebee</div>
       <div class="status-sub" id="statusSub">Isso só é necessário uma vez, ao ligar</div>
     </div>
 
-    <button class="boot-btn" id="bootButton">Ligar o Bobobi</button>
+    <button class="boot-btn" id="bootButton">Ligar o Bumblebee</button>
 
     <div class="volume-meter" id="volumeMeterWrap" style="display:none;">
       <div class="volume-fill" id="volumeFill"></div>
@@ -345,11 +345,11 @@
   let heardSpeechYet = false;
 
   const STATES = {
-    boot:       { label: 'Toque para ligar o Bobobi', sub: 'Isso só é necessário uma vez, ao ligar', ring: false },
-    wake_listen:{ label: 'Bobobi está por perto',      sub: 'Diga "Oi Bobobi" pra conversar',         ring: true },
+    boot:       { label: 'Toque para ligar o Bumblebee', sub: 'Isso só é necessário uma vez, ao ligar', ring: false },
+    wake_listen:{ label: 'Bumblebee está por perto',      sub: 'Diga "Bumblebee" pra conversar',            ring: true },
     recording:  { label: 'Ouvindo...',                 sub: '',                                        ring: true },
     thinking:   { label: 'Pensando...',                sub: 'Bip-bop, um instante',                    ring: true },
-    speaking:   { label: 'Bobobi está falando',         sub: '',                                        ring: true },
+    speaking:   { label: 'Bumblebee está falando',         sub: '',                                        ring: true },
     error:      { label: 'Ops, algo deu errado',        sub: 'Voltando a escutar em instantes',         ring: false }
   };
 
@@ -369,7 +369,7 @@
 
   // =========================================================
   // WAKE WORD ENGINES — camada trocável
-  // Contrato: { start(), stop() } + chama onWakeWordDetected() quando ouvir "bobobi"
+  // Contrato: { start(), stop() } + chama onWakeWordDetected() quando ouvir "bumblebee"
   // =========================================================
 
   function createWebSpeechEngine(onWakeWordDetected) {
@@ -392,15 +392,16 @@
       }
       transcriptDebug.textContent = transcript.trim() || '—';
 
-      if (normalize(transcript).includes('bobobi')) {
+      if (normalize(transcript).includes('bumblebee')) {
         onWakeWordDetected();
       }
     };
 
     recognition.onerror = (event) => {
-      // "no-speech" e "aborted" são normais em escuta contínua, ignora
-      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+      // "no-speech" é normal em escuta contínua, ignora
+      if (event.error !== 'no-speech') {
         console.warn('Erro no reconhecimento de voz:', event.error);
+        transcriptDebug.textContent = '[erro no reconhecimento: ' + event.error + ']';
       }
     };
 
@@ -425,9 +426,12 @@
 
   // ---------------------------------------------------------
   // TODO (quando a conta Picovoice for aprovada):
+  // "Bumblebee" é uma palavra de ativação PRONTA do Porcupine (built-in) -
+  // não precisa treinar nada nem baixar modelo em português, só:
   // 1. Adicionar via CDN/bundler: @picovoice/web-voice-processor e @picovoice/porcupine-web
-  // 2. Gerar no Picovoice Console: arquivo .ppn da wake word "Oi Bobobi" (idioma pt)
-  //    + o model file porcupine_params_pt.pv
+  // 2. Baixar no Picovoice Console o arquivo .ppn pronto de "Bumblebee" (plataforma Web)
+  //    (o modelo de idioma usado é o padrão em inglês, mesmo com o resto do app em português -
+  //    a wake word em si é só reconhecimento fonético, não precisa entender o idioma)
   // 3. Preencher PICOVOICE_ACCESS_KEY abaixo
   // 4. Implementar createPorcupineEngine seguindo o mesmo contrato { start(), stop() }
   // 5. Trocar o <select id="wakeEngine"> pra 'porcupine' (ou fixar no código)
@@ -496,10 +500,22 @@
   // Fluxo principal
   // =========================================================
 
-  function onWakeWordDetected() {
+  async function onWakeWordDetected() {
     if (currentState !== 'wake_listen') return;
     wakeEngine.stop();
-    startRecordingWithVAD();
+    // pequena pausa pra garantir que o mic interno do reconhecimento de voz
+    // seja liberado antes da gente pedir acesso ao microfone de novo
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      setupAudioAnalysis();
+      startRecordingWithVAD();
+    } catch (err) {
+      console.error(err);
+      setState('error', 'Não consegui acessar o microfone: ' + err.message);
+      setTimeout(backToWakeListen, 2000);
+    }
   }
 
   function startRecordingWithVAD() {
@@ -610,6 +626,16 @@
   }
 
   function backToWakeListen() {
+    // libera o microfone da gravação por completo antes de voltar
+    // a escutar a wake word, pra não disputar acesso ao mic
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      stream = null;
+    }
+    if (audioCtx) {
+      audioCtx.close().catch(() => {});
+      audioCtx = null;
+    }
     setState('wake_listen');
     transcriptDebug.textContent = '—';
     wakeEngine.start();
@@ -630,8 +656,6 @@
       bootButton.disabled = true;
       bootButton.textContent = 'Ligando...';
 
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      setupAudioAnalysis();
       await requestWakeLock();
 
       wakeEngine = getWakeEngine(onWakeWordDetected);
