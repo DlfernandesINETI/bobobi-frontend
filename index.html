@@ -464,8 +464,9 @@
     };
 
     recognition.onerror = (event) => {
-      // "no-speech" é normal em escuta contínua, ignora
-      if (event.error !== 'no-speech') {
+      // "no-speech" e "aborted" são esperados (aborted acontece toda vez que
+      // paramos de propósito pra iniciar a gravação); só mostra erros reais
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
         console.warn('Erro no reconhecimento de voz:', event.error);
         transcriptDebug.textContent = '[erro no reconhecimento: ' + event.error + ']';
       }
@@ -484,8 +485,16 @@
         try { recognition.start(); } catch (e) { /* já rodando */ }
       },
       stop() {
-        shouldBeRunning = false;
-        try { recognition.stop(); } catch (e) {}
+        // espera o evento real de encerramento (mic liberado) em vez de um tempo fixo no escuro
+        return new Promise((resolve) => {
+          shouldBeRunning = false;
+          recognition.addEventListener('end', () => resolve(), { once: true });
+          try {
+            recognition.stop();
+          } catch (e) {
+            resolve();
+          }
+        });
       }
     };
   }
@@ -568,10 +577,7 @@
 
   async function onWakeWordDetected() {
     if (currentState !== 'wake_listen') return;
-    wakeEngine.stop();
-    // pequena pausa pra garantir que o mic interno do reconhecimento de voz
-    // seja liberado antes da gente pedir acesso ao microfone de novo
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await wakeEngine.stop(); // aguarda o microfone ser realmente liberado
 
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
