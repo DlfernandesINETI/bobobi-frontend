@@ -657,8 +657,25 @@
     }
   }
 
+  function releaseMicStream() {
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      stream = null;
+    }
+    if (audioCtx) {
+      audioCtx.close().catch(() => {});
+      audioCtx = null;
+    }
+  }
+
   async function handleRecordingStop() {
     setState('thinking');
+
+    // libera o microfone JÁ AQUI, antes de tocar a resposta — celulares Android
+    // costumam forçar o áudio pro alto-falante interno (em vez do Bluetooth)
+    // enquanto o microfone segue ativo, mesmo que a gente não esteja mais gravando
+    releaseMicStream();
+
     const mimeType = mediaRecorder.mimeType || 'audio/webm';
     const blob = new Blob(audioChunks, { type: mimeType });
 
@@ -698,16 +715,9 @@
   }
 
   function backToWakeListen() {
-    // libera o microfone da gravação por completo antes de voltar
-    // a escutar a wake word, pra não disputar acesso ao mic
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      stream = null;
-    }
-    if (audioCtx) {
-      audioCtx.close().catch(() => {});
-      audioCtx = null;
-    }
+    // segurança extra: garante que o mic está liberado, mesmo que já tenha sido
+    // (por exemplo, no caminho de "ninguém falou nada depois da wake word")
+    releaseMicStream();
     setState('wake_listen');
     transcriptDebug.textContent = '—';
     wakeEngine.start();
