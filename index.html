@@ -323,6 +323,12 @@
         <div class="transcript-debug" id="transcriptDebug">—</div>
       </div>
 
+      <div>
+        <label>Saída de áudio (experimental)</label>
+        <button class="save-btn" id="pickOutputBtn" style="background:var(--wake); color:var(--text);">Selecionar caixa de som</button>
+        <div class="transcript-debug" id="outputStatus" style="margin-top:6px;">nenhuma selecionada (usando padrão do celular)</div>
+      </div>
+
       <div class="row">
         <div style="font-size:11px; color:var(--text-dim);">estado: <span id="stateDebug">boot</span></div>
       </div>
@@ -350,6 +356,8 @@
   const volumeFill = document.getElementById('volumeFill');
   const saveConfigBtn = document.getElementById('saveConfigBtn');
   const configDetails = document.querySelector('.config');
+  const pickOutputBtn = document.getElementById('pickOutputBtn');
+  const outputStatus = document.getElementById('outputStatus');
 
   let stream = null;
   let audioCtx = null;
@@ -432,6 +440,50 @@
   });
 
   loadSavedConfig();
+
+  // =========================================================
+  // Seleção manual de saída de áudio (experimental) — tentativa
+  // de contornar o bug do Chrome/Android que ignora o Bluetooth
+  // quando o microfone esteve ativo na página
+  // =========================================================
+  const OUTPUT_DEVICE_KEY = 'bumblebee_output_device_v1';
+
+  async function applySavedOutputDevice() {
+    const savedId = localStorage.getItem(OUTPUT_DEVICE_KEY);
+    if (!savedId || !player.setSinkId) return;
+    try {
+      await player.setSinkId(savedId);
+    } catch (e) {
+      // dispositivo pode não estar mais disponível; segue com o padrão
+    }
+  }
+
+  pickOutputBtn.addEventListener('click', async () => {
+    try {
+      if (navigator.mediaDevices.selectAudioOutput) {
+        const device = await navigator.mediaDevices.selectAudioOutput();
+        await player.setSinkId(device.deviceId);
+        localStorage.setItem(OUTPUT_DEVICE_KEY, device.deviceId);
+        outputStatus.textContent = 'saída: ' + (device.label || 'dispositivo selecionado');
+      } else if (player.setSinkId) {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const outputs = devices.filter((d) => d.kind === 'audiooutput');
+        if (outputs.length === 0) {
+          outputStatus.textContent = 'nenhuma saída de áudio encontrada além da padrão';
+          return;
+        }
+        // sem seletor nativo, mostra as opções disponíveis pra escolher no console/manual
+        const labels = outputs.map((d, i) => `${i}: ${d.label || d.deviceId}`).join(' | ');
+        outputStatus.textContent = 'disponíveis: ' + labels;
+      } else {
+        outputStatus.textContent = 'este navegador não suporta escolher a saída de áudio';
+      }
+    } catch (err) {
+      outputStatus.textContent = 'erro: ' + err.message;
+    }
+  });
+
+  applySavedOutputDevice();
 
   // =========================================================
   // WAKE WORD ENGINES — camada trocável
